@@ -134,7 +134,8 @@ async def websocket_endpoint(websocket: WebSocket):
             frame = np.array(image)
 
             # Process the frame with YOLO
-            processed_frame, detect_res = yolo.predictions(frame)
+            processed_frame, detections = yolo.predictions(frame)
+            distances = yolo.compute_manhattan_distance(detections)
 
             # Convert results to an image
             result_image = Image.fromarray(processed_frame)
@@ -143,11 +144,14 @@ async def websocket_endpoint(websocket: WebSocket):
             img_bytes = buffer.getvalue()
 
             #
-            detection_info = json.dumps(detect_res)
+             response_payload = {
+                "detections": detections,
+                "distances": distances
+            }
 
             # Send processed frame back to the client
             await websocket.send_bytes(img_bytes)
-            await websocket.send_text(detection_info)
+            await websocket.send_text(json.dumps(response_payload))
 
         except WebSocketDisconnect:
             print("Client disconnected")
