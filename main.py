@@ -48,37 +48,68 @@ def bytes_to_numpy(data: bytes) -> np.ndarray:
     return np.array(image)
 
 
+def compute_manhattan_distance(detections):
+    """Compute Manhattan distances between detected objects."""
+    distances = []
+    num_objects = len(detections)
+
+    for i in range(num_objects):
+        for j in range(i + 1, num_objects):
+            obj1, obj2 = detections[i], detections[j]
+            x1_center = (obj1['x1'] + obj1['x2']) // 2
+            y1_center = (obj1['y1'] + obj1['y2']) // 2
+            x2_center = (obj2['x1'] + obj2['x2']) // 2
+            y2_center = (obj2['y1'] + obj2['y2']) // 2
+
+            distance = abs(x1_center - x2_center) + abs(y1_center - y2_center)
+            distances.append({
+                "object1": obj1['label'],
+                "object2": obj2['label'],
+                "distance": distance,
+            })
+    return distances
+
+
 @app.post("/object-to-json")
 async def detect_food_return_json_result(file: bytes = File(...)):
     # Convert bytes to NumPy array
     input_image = bytes_to_numpy(file)
     results = yolo.predictions(input_image)
 
-    # Convert NumPy array to a list
-    detect_res = results.tolist()
+    # Convert results to a list of detected objects
+    detect_res = results["detections"]  # Assuming your YOLO model returns detections in this format
 
-    return {"result": detect_res}
+    # Compute Manhattan distances between detected objects
+    distances = compute_manhattan_distance(detect_res)
+
+    return {
+        "detections": detect_res,
+        "distances": distances
+    }
 
 
 @app.post("/object-to-img")
 async def detect_food_return_base64_img(file: bytes = File(...)):
     # Convert bytes to NumPy array
     input_image = bytes_to_numpy(file)
-    #only processed image
-    # results = yolo.predictions(input_image)
-    #image with data
+    # Get processed image and detections
     processed_image, detect_res = yolo.predictions(input_image)
 
-    # Save the result image
+    # Compute Manhattan distances between detected objects
+    distances = compute_manhattan_distance(detect_res)
+
+    # Convert processed image to base64
     bytes_io = io.BytesIO()
     img_base64 = Image.fromarray(processed_image)
     img_base64.save(bytes_io, format="jpeg")
     img_str = base64.b64encode(bytes_io.getvalue()).decode('utf-8')
-
+    
     return {
         "image": img_str,
-        "detections": detect_res
+        "detections": detect_res,
+        "distances": distances
     }
+
 
 @app.post("/object-to-video")
 async def detect_objects_from_video(file: UploadFile = File(...)):
@@ -104,10 +135,10 @@ async def detect_objects_from_video(file: UploadFile = File(...)):
                 break
 
             # YOLO prediction on each frame
-            results = yolo.predictions(frame)
+            processed_frame, detect_res = yolo.predictions(frame)
 
             # Save the result frame
-            out.write(results)
+            out.write(processed_frame)
 
         video.release()
         out.release()
@@ -121,6 +152,7 @@ async def detect_objects_from_video(file: UploadFile = File(...)):
         if os.path.exists('output.mp4'):
             os.remove('output.mp4')
 
+
 @app.websocket("/ws/realtime-detection")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -132,8 +164,10 @@ async def websocket_endpoint(websocket: WebSocket):
             frame = np.array(image)
 
             # Process the frame with YOLO
-            processed_frame, detections = yolo.predictions(frame)
-            distances = yolo.compute_manhattan_distance(detections)
+            processed_frame, detect_res = yolo.predictions(frame)
+
+            # Compute Manhattan distances
+            distances = compute_manhattan_distance(detect_res)
 
             # Convert results to an image
             result_image = Image.fromarray(processed_frame)
@@ -141,15 +175,14 @@ async def websocket_endpoint(websocket: WebSocket):
             result_image.save(buffer, format="JPEG")
             img_bytes = buffer.getvalue()
 
-            # Correct indentation for response_payload
-            response_payload = {
-                "detections": detections,
+            detection_info = {
+                "detections": detect_res,
                 "distances": distances
             }
 
             # Send processed frame back to the client
             await websocket.send_bytes(img_bytes)
-            await websocket.send_text(json.dumps(response_payload))
+            await websocket.send_text(json.dumps(detection_info))
 
         except WebSocketDisconnect:
             print("Client disconnected")
