@@ -1,6 +1,6 @@
-from fastapi import FastAPI, File , UploadFile , WebSocket , WebSocketDisconnect
+from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
 from yolo_predictions import YOLO_Pred
-from starlette.responses import Response , StreamingResponse
+from starlette.responses import Response, StreamingResponse
 import io
 from PIL import Image
 import numpy as np
@@ -60,7 +60,6 @@ async def detect_food_return_json_result(file: bytes = File(...)):
     return {"result": detect_res}
 
 
-
 @app.post("/object-to-img")
 async def detect_food_return_base64_img(file: bytes = File(...)):
     # Convert bytes to NumPy array
@@ -68,15 +67,14 @@ async def detect_food_return_base64_img(file: bytes = File(...)):
     #only processed image
     # results = yolo.predictions(input_image)
     #image with data
-    processed_image,detect_res = yolo.predictions(input_image)
+    processed_image, detect_res = yolo.predictions(input_image)
 
     # Save the result image
     bytes_io = io.BytesIO()
     img_base64 = Image.fromarray(processed_image)
     img_base64.save(bytes_io, format="jpeg")
     img_str = base64.b64encode(bytes_io.getvalue()).decode('utf-8')
-    
-    # return Response(content=bytes_io.getvalue(), media_type="image/jpeg")
+
     return {
         "image": img_str,
         "detections": detect_res
@@ -143,8 +141,8 @@ async def websocket_endpoint(websocket: WebSocket):
             result_image.save(buffer, format="JPEG")
             img_bytes = buffer.getvalue()
 
-            #
-             response_payload = {
+            # Correct indentation for response_payload
+            response_payload = {
                 "detections": detections,
                 "distances": distances
             }
@@ -156,4 +154,3 @@ async def websocket_endpoint(websocket: WebSocket):
         except WebSocketDisconnect:
             print("Client disconnected")
             break
-
